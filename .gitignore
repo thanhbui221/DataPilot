@@ -31,8 +31,9 @@ wheels/
 *~
 
 # Data
-data/*.duckdb
 data/*.db
+data/*.sqlite
+data/*.sqlite3
 data/*.parquet
 !data/.gitkeep
 

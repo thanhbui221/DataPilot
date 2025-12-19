@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Initialize DuckDB database with sample data.
+Initialize SQLite database with sample data.
 
 This script creates the database schema and inserts sample data
 matching the structure defined in metadata/schema.json.
 """
 import sys
 from pathlib import Path
-import duckdb
+import sqlite3
 from datetime import datetime, timedelta
 import random
 
@@ -15,13 +15,13 @@ import random
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Configuration
-DB_PATH = Path(__file__).parent.parent / "data" / "sample.duckdb"
+DB_PATH = Path(__file__).parent.parent / "data" / "sample.db"
 SCHEMA_PATH = Path(__file__).parent.parent / "metadata" / "schema.json"
 
 
 def create_database(db_path: Path, reset: bool = False):
     """
-    Create or reset the DuckDB database.
+    Create or reset the SQLite database.
     
     Args:
         db_path: Path to database file
@@ -35,11 +35,11 @@ def create_database(db_path: Path, reset: bool = False):
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
     print(f"Creating database: {db_path}")
-    conn = duckdb.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path))
     return conn
 
 
-def create_tables(conn: duckdb.DuckDBPyConnection):
+def create_tables(conn: sqlite3.Connection):
     """Create all tables based on schema.json."""
     print("\nCreating tables...")
     
@@ -59,7 +59,7 @@ def create_tables(conn: duckdb.DuckDBPyConnection):
             country VARCHAR(2) NOT NULL,
             email VARCHAR(255) NOT NULL,
             created_at TIMESTAMP NOT NULL,
-            has_purchased BOOLEAN DEFAULT FALSE
+            has_purchased BOOLEAN DEFAULT 0
         )
     """)
     print("✓ Created table: users")
@@ -92,7 +92,7 @@ def create_tables(conn: duckdb.DuckDBPyConnection):
     print("✓ Created table: orders")
 
 
-def insert_sample_data(conn: duckdb.DuckDBPyConnection):
+def insert_sample_data(conn: sqlite3.Connection):
     """Insert realistic sample data."""
     print("\nInserting sample data...")
     
@@ -134,7 +134,7 @@ def insert_sample_data(conn: duckdb.DuckDBPyConnection):
         country = random.choice(countries)
         email = f"user{i}@example.com"
         created_at = base_date + timedelta(days=random.randint(0, 365))
-        has_purchased = random.choice([True, True, True, False])  # 75% have purchased
+        has_purchased = random.choice([1, 1, 1, 0])  # 75% have purchased (SQLite uses 0/1 for boolean)
         users.append((i, country, email, created_at, has_purchased))
     
     conn.executemany(
@@ -189,15 +189,18 @@ def insert_sample_data(conn: duckdb.DuckDBPyConnection):
     # Update users.has_purchased based on actual orders
     conn.execute("""
         UPDATE users
-        SET has_purchased = TRUE
+        SET has_purchased = 1
         WHERE user_id IN (
             SELECT DISTINCT user_id FROM orders WHERE status = 'completed'
         )
     """)
     print("✓ Updated user purchase status")
+    
+    # Commit all changes
+    conn.commit()
 
 
-def verify_data(conn: duckdb.DuckDBPyConnection):
+def verify_data(conn: sqlite3.Connection):
     """Verify the inserted data."""
     print("\nVerifying data...")
     
@@ -251,7 +254,7 @@ def main():
     """Main function."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Initialize DuckDB database with sample data")
+    parser = argparse.ArgumentParser(description="Initialize SQLite database with sample data")
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -267,7 +270,7 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("DataPilot Database Initialization")
+    print("DataPilot Database Initialization (SQLite)")
     print("=" * 60)
     
     try:
@@ -289,6 +292,7 @@ def main():
         print("\n" + "=" * 60)
         print("✓ Database initialization completed successfully!")
         print(f"✓ Database location: {Path(args.db_path).absolute()}")
+        print(f"✓ Database URI: sqlite:///{Path(args.db_path).absolute()}")
         print("=" * 60)
         
     except Exception as e:
@@ -300,4 +304,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

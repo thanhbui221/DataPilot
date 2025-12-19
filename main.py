@@ -2,9 +2,11 @@
 """DataPilot - AI Data Analyst Agent (Telegram Bot)"""
 import sys
 from pathlib import Path
-
+from dotenv import load_dotenv
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+load_dotenv()
 
 from src.bot.telegram_bot import DataPilotBot
 import logging

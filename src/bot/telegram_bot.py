@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import logging
 
 from ..utils.logger import setup_logger
-from ..utils.db import DuckDBManager
+from ..utils.db import DatabaseManager
 from ..utils.state_store import StateStore
 from ..agents.intent_clarifier import IntentClarifier
 from ..agents.sql_generator import SQLGenerator
@@ -40,8 +40,8 @@ class DataPilotBot:
         logger.info("DataPilot bot initializing...")
         
         # Initialize components
-        self.db_manager = DuckDBManager(
-            self.config["database"]["duckdb_path"],
+        self.db_manager = DatabaseManager(
+            self.config["database"]["db_uri"],
             read_only=self.config["database"]["read_only"]
         )
         
@@ -52,31 +52,26 @@ class DataPilotBot:
         
         # Initialize agents
         llm_config = self.config["llm"]
+        
+        # Build common LLM args - only include base_url if specified in config
+        llm_kwargs = {
+            "model_name": llm_config["model_name"],
+            "temperature": llm_config["temperature"],
+            "max_tokens": llm_config["max_tokens"],
+            "timeout": llm_config["timeout"]
+        }
+        if llm_config.get("base_url"):
+            llm_kwargs["base_url"] = llm_config["base_url"]
+        
         self.intent_clarifier = IntentClarifier(
-            model_name=llm_config["model_name"],
-            base_url=llm_config.get("base_url", "http://localhost:11434"),
-            temperature=llm_config["temperature"],
-            max_tokens=llm_config["max_tokens"],
-            timeout=llm_config["timeout"],
+            **llm_kwargs,
             max_clarification_rounds=self.config["intent_clarifier"]["max_clarification_rounds"],
             confidence_threshold=self.config["intent_clarifier"]["confidence_threshold"]
         )
         
-        self.sql_generator = SQLGenerator(
-            model_name=llm_config["model_name"],
-            base_url=llm_config.get("base_url", "http://localhost:11434"),
-            temperature=llm_config["temperature"],
-            max_tokens=llm_config["max_tokens"],
-            timeout=llm_config["timeout"]
-        )
+        self.sql_generator = SQLGenerator(**llm_kwargs)
         
-        self.insight_generator = InsightGenerator(
-            model_name=llm_config["model_name"],
-            base_url=llm_config.get("base_url", "http://localhost:11434"),
-            temperature=llm_config["temperature"],
-            max_tokens=llm_config["max_tokens"],
-            timeout=llm_config["timeout"]
-        )
+        self.insight_generator = InsightGenerator(**llm_kwargs)
         
         # Initialize tools
         self.schema_selector = SchemaSelector(
@@ -90,8 +85,11 @@ class DataPilotBot:
             require_partition_filter=self.config["sql_validator"]["require_partition_filter"]
         )
         
+        # SQL executor needs LLM for LangChain toolkit - use intent_clarifier's LLM
+        # Note: LLM is initialized in IntentClarifier.__init__, so it should be available
         self.sql_executor = SQLExecutor(
             self.db_manager,
+            llm=self.intent_clarifier._llm,
             timeout=self.config["database"]["query_timeout"],
             max_rows=self.config["database"]["max_rows"]
         )

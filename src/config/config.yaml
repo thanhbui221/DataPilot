@@ -3,15 +3,15 @@ telegram:
 
 llm:
   provider: "ollama"  # ollama, openai, etc.
-  base_url: "http://localhost:11434"  # Ollama API endpoint
-  model_name: "mistral"  # or "llama3", "codellama", "qwen2.5", etc. (must be pulled in Ollama)
-  temperature: 0.7
+  # base_url: "http://localhost:11434"  # Optional - defaults to localhost:11434 if not specified
+  model_name: "llama3.1:latest"  # or "llama3", "codellama", "qwen2.5", etc. (must be pulled in Ollama)
+  temperature: 0
   max_tokens: 2048
   use_unified_model: true  # Use single model for all agents
   timeout: 60  # seconds
 
 database:
-  duckdb_path: "./data/sample.duckdb"
+  db_uri: "sqlite:///data/sample.db"  # SQLite database URI
   read_only: true
   query_timeout: 30  # seconds
   max_rows: 5000

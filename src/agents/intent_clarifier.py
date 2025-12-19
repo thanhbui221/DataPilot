@@ -5,6 +5,11 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from .base_agent import BaseAgent
+from ..prompts import (
+    INTENT_CLARIFIER_SYSTEM_PROMPT, 
+    INTENT_CLARIFIER_CLARIFICATION_SYSTEM_PROMPT,
+    INTENT_CLARIFIER_CLARIFICATION_USER_PROMPT
+)
 import logging
 
 logger = logging.getLogger("datapilot")
@@ -24,9 +29,16 @@ class IntentClarifier(BaseAgent):
     """Clarifies user intent and extracts structured information using LangChain."""
     
     def __init__(self, *args, **kwargs):
+        # Extract IntentClarifier-specific parameters before calling super()
+        max_clarification_rounds = kwargs.pop("max_clarification_rounds", 2)
+        confidence_threshold = kwargs.pop("confidence_threshold", 0.7)
+        
+        # Now call super with remaining kwargs
         super().__init__(*args, **kwargs)
-        self.max_clarification_rounds = kwargs.get("max_clarification_rounds", 2)
-        self.confidence_threshold = kwargs.get("confidence_threshold", 0.7)
+        
+        # Set IntentClarifier-specific attributes
+        self.max_clarification_rounds = max_clarification_rounds
+        self.confidence_threshold = confidence_threshold
         self.output_parser = PydanticOutputParser(pydantic_object=IntentOutput)
         
         # Load metrics for context
@@ -93,30 +105,7 @@ class IntentClarifier(BaseAgent):
     def _build_system_prompt(self) -> str:
         """Build system prompt for intent clarification."""
         metrics_list = ", ".join(self.available_metrics) if self.available_metrics else "total_revenue, order_count, etc."
-        
-        return f"""You are an expert data analyst assistant. Your task is to extract structured intent from user questions about data.
-
-Available metrics: {metrics_list}
-
-Extract the following information:
-1. metric: The business metric the user wants to see (must match one of the available metrics)
-2. dimensions: Columns/dimensions to group by (e.g., country, month, product_category)
-3. time_range: Time period filter if mentioned (e.g., "last_month", "2024-01-01 to 2024-03-31")
-4. comparison: Comparison period if mentioned (e.g., "previous_month", "year_over_year")
-5. needs_confirmation: true if the question is ambiguous and needs clarification
-6. confidence: Your confidence in the extraction (0.0 to 1.0)
-
-Return your response as valid JSON matching this schema:
-{{
-  "metric": "string",
-  "dimensions": ["string"],
-  "time_range": "string or null",
-  "comparison": "string or null",
-  "needs_confirmation": boolean,
-  "confidence": float
-}}
-
-If the question is ambiguous, set needs_confirmation=true and provide a reasonable guess."""
+        return INTENT_CLARIFIER_SYSTEM_PROMPT.format(available_metrics=metrics_list)
     
     def _build_user_prompt(self, user_message: str, 
                           conversation_context: Optional[list] = None) -> str:
@@ -177,15 +166,13 @@ If the question is ambiguous, set needs_confirmation=true and provide a reasonab
         Returns:
             Clarification question string
         """
-        system_prompt = """You are a helpful data analyst assistant. When a user's question is ambiguous, 
-ask a clear, concise clarification question to understand their intent better."""
+        system_prompt = INTENT_CLARIFIER_CLARIFICATION_SYSTEM_PROMPT
         
-        user_prompt = f"""The user's question was ambiguous. Extracted intent so far:
-- Metric: {ambiguous_intent.get('metric', 'unknown')}
-- Dimensions: {ambiguous_intent.get('dimensions', [])}
-- Time range: {ambiguous_intent.get('time_range', 'not specified')}
-
-Ask a single, clear question to clarify what the user wants."""
+        user_prompt = INTENT_CLARIFIER_CLARIFICATION_USER_PROMPT.format(
+            metric=ambiguous_intent.get('metric', 'unknown'),
+            dimensions=', '.join(ambiguous_intent.get('dimensions', [])) or 'None',
+            time_range=ambiguous_intent.get('time_range', 'not specified')
+        )
         
         try:
             clarification = self.generate(system_prompt, user_prompt)

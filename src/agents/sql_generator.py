@@ -3,6 +3,7 @@ import json
 from typing import Dict, Any, Optional
 from langchain.prompts import ChatPromptTemplate
 from .base_agent import BaseAgent
+from ..prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_GENERATOR_USER_PROMPT_TEMPLATE
 import logging
 
 logger = logging.getLogger("datapilot")
@@ -82,19 +83,7 @@ class SQLGenerator(BaseAgent):
     
     def _build_system_prompt(self) -> str:
         """Build system prompt for SQL generation."""
-        return """You are an expert SQL query generator. Your task is to generate safe, performant SQL queries.
-
-Rules:
-1. Only generate SELECT statements (read-only)
-2. Never use SELECT * - always specify columns explicitly
-3. Must respect metric definitions exactly
-4. Include time filters if the table is partitioned
-5. Use proper JOIN syntax
-6. Include GROUP BY when using aggregations
-7. Add LIMIT clause if not using aggregations
-8. Use clear, readable column aliases
-
-Return only the SQL query, no explanations."""
+        return SQL_GENERATOR_SYSTEM_PROMPT
     
     def _build_user_prompt(self, intent: Dict[str, Any],
                           schema_slice: Dict[str, Any],
@@ -145,7 +134,10 @@ Return only the SQL query, no explanations."""
         prompt_parts.append("1. Uses the metric calculation from the metric definition")
         prompt_parts.append("2. Groups by the specified dimensions")
         prompt_parts.append("3. Applies required filters from the metric definition")
-        prompt_parts.append("4. Includes time filter if partition key is specified")
+        if intent.get('time_range') and schema_slice.get('partition'):
+            prompt_parts.append("4. Includes time filter using the user's specified time_range and partition key")
+        else:
+            prompt_parts.append("4. Do NOT add time filters if user did not specify a time_range")
         prompt_parts.append("5. Uses proper JOINs to connect tables")
         
         return "\n".join(prompt_parts)

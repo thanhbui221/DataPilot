@@ -3,6 +3,7 @@ import json
 from typing import Dict, Any
 from langchain.prompts import ChatPromptTemplate
 from .base_agent import BaseAgent
+from ..prompts import INSIGHT_GENERATOR_SYSTEM_PROMPT, INSIGHT_GENERATOR_USER_PROMPT_TEMPLATE
 import logging
 
 logger = logging.getLogger("datapilot")
@@ -43,15 +44,7 @@ class InsightGenerator(BaseAgent):
     
     def _build_system_prompt(self) -> str:
         """Build system prompt for insight generation."""
-        return """You are an expert data analyst. Your task is to generate clear, actionable insights from query results.
-
-Format your response as:
-1. **Executive Summary** - 2-3 sentence overview
-2. **Key Findings** - Bullet points of important observations
-3. **Caveats** - Any limitations or important context
-4. **Suggested Next Questions** - 2-3 relevant follow-up questions
-
-Be concise, data-driven, and business-focused. Use emojis sparingly for emphasis."""
+        return INSIGHT_GENERATOR_SYSTEM_PROMPT
     
     def _build_user_prompt(self, reduced_results: Dict[str, Any],
                           original_question: str,

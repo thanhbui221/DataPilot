@@ -144,7 +144,8 @@ class SQLValidator:
     def _has_select_star(self, parsed) -> bool:
         """Check if query uses SELECT *."""
         if isinstance(parsed, sqlglot.expressions.Select):
-            for expression in parsed.expressions:
+            expressions = parsed.expressions or []
+            for expression in expressions:
                 if isinstance(expression, sqlglot.expressions.Star):
                     return True
         return False
@@ -157,20 +158,29 @@ class SQLValidator:
     def _is_aggregated(self, parsed) -> bool:
         """Check if query uses aggregation functions."""
         if isinstance(parsed, sqlglot.expressions.Select):
-            # Check for GROUP BY
-            if parsed.group:
+            # Check for GROUP BY - sqlglot uses 'group' key in args
+            group_by = parsed.args.get("group")
+            if group_by and group_by.expressions:
                 return True
+            
             # Check for aggregate functions in SELECT
-            for expr in parsed.expressions:
+            expressions = parsed.expressions or []
+            for expr in expressions:
                 expr_str = str(expr)
-                if any(func in expr_str.upper() for func in ['SUM(', 'COUNT(', 'AVG(', 'MAX(', 'MIN(']):
+                # Check for aggregate function calls
+                if any(func in expr_str.upper() for func in ['SUM(', 'COUNT(', 'AVG(', 'MAX(', 'MIN(', 'GROUP_CONCAT(']):
+                    return True
+                # Also check if expression is an aggregate function
+                if isinstance(expr, (sqlglot.expressions.AggFunc, sqlglot.expressions.Count, 
+                                    sqlglot.expressions.Sum, sqlglot.expressions.Avg,
+                                    sqlglot.expressions.Max, sqlglot.expressions.Min)):
                     return True
         return False
     
     def _has_limit(self, parsed) -> bool:
         """Check if query has LIMIT clause."""
         if isinstance(parsed, sqlglot.expressions.Select):
-            return parsed.limit is not None
+            return parsed.args.get("limit") is not None
         return False
     
     def _has_partition_filter(self, parsed, partition_key: str) -> bool:
@@ -188,6 +198,6 @@ class SQLValidator:
     
     def _estimate_rows(self, parsed) -> Optional[int]:
         """Estimate number of rows (placeholder)."""
-        # TODO: Implement row estimation using DuckDB EXPLAIN
+        # TODO: Implement row estimation using SQL EXPLAIN or sampling
         return None
 

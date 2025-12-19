@@ -10,7 +10,10 @@ def get_run_decision_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🧾 Show SQL only", callback_data="show_sql")
         ],
         [
-            InlineKeyboardButton("✏️ Modify intent", callback_data="modify_intent"),
+            InlineKeyboardButton("✏️ Modify SQL", callback_data="modify_sql"),
+            InlineKeyboardButton("🔄 Modify intent", callback_data="modify_intent")
+        ],
+        [
             InlineKeyboardButton("❌ Cancel", callback_data="cancel")
         ]
     ]

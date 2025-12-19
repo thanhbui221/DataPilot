@@ -66,14 +66,16 @@ Telegram Response
 | SQL Generator     | CodeLLaMA-7B / StarCoder-2 |
 | Insight Generator | Mistral-7B / LLaMA-3-8B    |
 
-**Run via (TBD):**
-- llama.cpp, vLLM, or transformers
-- Quantized (4-bit / 8-bit)
+**Run via:**
+- **Ollama** (current implementation) - Easy local deployment
+- LangChain integration for unified API
+- Quantized models (automatically handled by Ollama)
 
 ### Data Layer
 
-- DuckDB (local POC)
-- Pandas/Spark? for result reduction
+- **SQLite** (current implementation) - Simple, reliable for POC
+- LangChain SQLDatabase for connection management
+- Pandas for result reduction
 
 ### SQL Safety
 
@@ -201,8 +203,8 @@ total_revenue:
 
 ### Tooling
 
-- `sqlglot.parse_one(sql)`
-- DuckDB EXPLAIN for cost estimation
+- `sqlglot.parse_one(sql)` for SQL parsing and AST checks
+- SQLite for execution (via LangChain SQLDatabase)
 
 ### Rules
 
@@ -249,7 +251,8 @@ Telegram bot presents: *"SQL validated. Do you want to run this query?"*
 **Buttons:**
 - ▶️ Run query
 - 🧾 Show SQL only
-- ✏️ Modify intent
+- ✏️ Modify SQL (new feature - allows direct SQL editing)
+- 🔄 Modify intent
 - ❌ Cancel
 
 ## 7. State D — SQL Executor (Tool)
@@ -270,7 +273,10 @@ Telegram bot presents: *"SQL validated. Do you want to run this query?"*
 ### POC Implementation
 
 ```python
-duckdb.connect().execute(sql).df()
+# Uses LangChain SQLDatabase for execution
+from langchain_community.utilities import SQLDatabase
+db = SQLDatabase.from_uri("sqlite:///data/sample.db")
+result = db.run(sql)  # Returns string, parsed to DataFrame
 ```
 
 ### Query Logging
@@ -282,12 +288,14 @@ duckdb.connect().execute(sql).df()
 
 **Purpose:** Prepare compact, LLM-friendly input.
 
+**Implementation:** Pandas-based data reduction
+
 **Operations:**
 - Row count
-- Aggregates
-- Top-N breakdown
-- % change vs comparison
-- Sampling (≤20 rows)
+- Aggregates (sum, avg, min, max for numeric columns)
+- Top-N breakdown (by first dimension column)
+- % change vs comparison (if comparison data provided)
+- Sampling (≤20 rows by default)
 
 **Output Example:**
 ```json
@@ -306,6 +314,8 @@ duckdb.connect().execute(sql).df()
 
 ## 9. Agent 4 — Insight Generator
 
+**Implementation:** LangChain + Ollama (ChatOllama) with prompt templates
+
 **Input:**
 - Reduced result JSON
 - Original question
@@ -316,6 +326,11 @@ duckdb.connect().execute(sql).df()
 - Key drivers
 - Caveats
 - Suggested next questions
+
+**Behavior:**
+- Uses prompts from `prompts.yaml` for consistency
+- Handles empty results gracefully with helpful suggestions
+- Generates actionable insights from query results
 
 ## 10. Telegram Bot State Machine
 
@@ -375,17 +390,17 @@ duckdb.connect().execute(sql).df()
 
 ```
 /src
-  /agents
-    intent_clarifier.py
-    sql_generator.py
-    insight_generator.py
+/agents
+  intent_clarifier.py
+  sql_generator.py
+  insight_generator.py
     base_agent.py (shared LLM interface)
 
-  /tools
-    schema_selector.py
-    sql_validator.py
-    sql_executor.py
-    result_reducer.py
+/tools
+  schema_selector.py
+  sql_validator.py
+  sql_executor.py
+  result_reducer.py
 
   /bot
     telegram_bot.py
@@ -402,7 +417,7 @@ duckdb.connect().execute(sql).df()
 
   /utils
     logger.py (structured logging setup)
-    db.py (DuckDB connection manager)
+    db.py (SQLite connection manager via LangChain SQLDatabase)
     state_store.py (state persistence)
 
 /metadata
@@ -417,7 +432,7 @@ duckdb.connect().execute(sql).df()
     test_flows.py
 
 /data
-  sample.duckdb (sample database for testing)
+  sample.db (SQLite sample database for testing)
 
 main.py
 requirements.txt
@@ -434,14 +449,14 @@ telegram:
   bot_token: "${TELEGRAM_BOT_TOKEN}"
   
 llm:
-  model_path: "./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-  model_type: "mistral"  # or "llama", "codellama"
+  model_name: "mistral"  # Ollama model name (e.g., "mistral", "llama3", "codellama:7b")
+  base_url: "http://localhost:11434"  # Optional, defaults to localhost:11434
   temperature: 0.7
   max_tokens: 2048
-  use_unified_model: true  # Use single model for all agents
+  timeout: 60
   
 database:
-  duckdb_path: "./data/sample.duckdb"
+  db_uri: "sqlite:///data/sample.db"
   read_only: true
   query_timeout: 30
   max_rows: 5000
@@ -470,7 +485,7 @@ state_store:
 
 - `TELEGRAM_BOT_TOKEN` (required)
 - `MODEL_PATH` (optional, overrides config)
-- `DUCKDB_PATH` (optional, overrides config)
+- `DB_URI` (optional, overrides config, e.g., "sqlite:///data/sample.db")
 
 ## 13. Error Handling & Resilience
 
@@ -572,7 +587,7 @@ Detect references like:
 - Single unified LLM model
 - Hardcoded schema.json
 - Basic SQL validator (safety rules only)
-- SQL executor with DuckDB
+- SQL executor with SQLite (via LangChain SQLDatabase)
 - Simple result reducer
 - Basic insight generator
 - Configuration management

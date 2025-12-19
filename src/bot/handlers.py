@@ -4,8 +4,20 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from .states import BotState
 import logging
+import html
 
 logger = logging.getLogger("datapilot")
+
+
+def escape_sql_for_telegram(sql: str) -> str:
+    """
+    Escape SQL for safe display in Telegram messages.
+    
+    For Markdown mode, we need to escape special characters.
+    For HTML mode, we use html.escape().
+    """
+    # Escape HTML entities (safer for both Markdown and HTML)
+    return html.escape(sql)
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,26 +81,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
     message_text = update.message.text
     
     # Get current state
-    state = bot_state_manager.get_state(user_id)
-    if not state:
-        state = BotState.WAITING_FOR_QUESTION.value
-        bot_state_manager.set_state(user_id, state)
+    state_data = bot_state_manager.get_state(user_id)
+    if not state_data:
+        current_state = BotState.WAITING_FOR_QUESTION.value
+        bot_state_manager.set_state(user_id, current_state)
+    else:
+        current_state = state_data.get("state", BotState.WAITING_FOR_QUESTION.value)
     
-    logger.info(f"User {user_id} in state {state}: {message_text}")
+    logger.info(f"User {user_id} in state {current_state}: {message_text}")
     
     # Route to state handler
-    if state == BotState.WAITING_FOR_QUESTION.value:
+    if current_state == BotState.WAITING_FOR_QUESTION.value:
         await handle_waiting_for_question(
             update, context, bot_state_manager, intent_clarifier
         )
-    elif state == BotState.CLARIFYING_INTENT.value:
+    elif current_state == BotState.CLARIFYING_INTENT.value:
         await handle_clarifying_intent(
             update, context, bot_state_manager, intent_clarifier
         )
+    elif current_state == BotState.CONFIRM_INTENT.value:
+        # User can type to modify, treat as new question
+        await handle_waiting_for_question(
+            update, context, bot_state_manager, intent_clarifier
+        )
+    elif current_state == BotState.ERROR.value:
+        # Reset to waiting state on error and try to process message
+        await handle_error_state(update, context, bot_state_manager, intent_clarifier)
+    elif current_state == BotState.AWAIT_RUN_DECISION.value:
+        # User sent text instead of clicking button - treat as new question
+        await handle_await_run_decision_text(update, context, bot_state_manager, intent_clarifier)
+    elif current_state == BotState.EDITING_SQL.value:
+        # User is editing SQL
+        await handle_editing_sql(update, context, bot_state_manager, sql_validator)
     # TODO: Add handlers for other states
     else:
         await update.message.reply_text(
-            f"State {state} handler not yet implemented. Please use /start to reset."
+            f"State {current_state} handler not yet implemented. Please use /start to reset."
         )
 
 
@@ -126,10 +154,14 @@ async def handle_waiting_for_question(update: Update, context: ContextTypes.DEFA
             await handle_intent_confirmed(update, context, bot_state_manager, intent)
             
     except Exception as e:
-        logger.error(f"Error in handle_waiting_for_question: {str(e)}")
-        await thinking_msg.delete()
+        logger.error(f"Error in handle_waiting_for_question: {str(e)}", exc_info=True)
+        try:
+            await thinking_msg.delete()
+        except:
+            pass
         await update.message.reply_text(
-            "❌ Sorry, I encountered an error processing your question. Please try again."
+            f"❌ Sorry, I encountered an error processing your question: {str(e)}\n\n"
+            "Please try asking again or use /start to reset."
         )
         bot_state_manager.set_state(user_id, BotState.ERROR.value)
 
@@ -144,12 +176,155 @@ async def handle_clarifying_intent(update: Update, context: ContextTypes.DEFAULT
     state_data = bot_state_manager.get_state(user_id)
     if not state_data or "intent" not in state_data.get("context", {}):
         await update.message.reply_text("Please start over with /start")
+        bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
         return
     
-    # TODO: Update intent based on clarification
-    # For now, move forward
-    intent = state_data["context"]["intent"]
-    await handle_intent_confirmed(update, context, bot_state_manager, intent)
+    # Get the stored intent
+    stored_intent = state_data["context"]["intent"]
+    original_question = state_data["context"].get("original_question", message_text)
+    
+    # Re-clarify intent with the new user response
+    # Combine original question with clarification response
+    combined_question = f"{original_question} {message_text}"
+    conversation_context = bot_state_manager.get_recent_messages(user_id, limit=5)
+    
+    try:
+        # Re-clarify with combined context
+        updated_intent = intent_clarifier.clarify_intent(combined_question, conversation_context)
+        
+        # Update stored intent
+        bot_state_manager.set_state(user_id, BotState.CLARIFYING_INTENT.value, {
+            "intent": updated_intent,
+            "original_question": original_question
+        })
+        
+        if updated_intent.get("needs_confirmation") and updated_intent.get("confidence", 0) < intent_clarifier.confidence_threshold:
+            # Still needs clarification
+            clarification = intent_clarifier.ask_clarification(updated_intent)
+            await update.message.reply_text(clarification)
+        else:
+            # Good enough, move to confirmation
+            await handle_intent_confirmed(update, context, bot_state_manager, updated_intent)
+            
+    except Exception as e:
+        logger.error(f"Error in handle_clarifying_intent: {str(e)}")
+        # Fallback: use stored intent
+        await handle_intent_confirmed(update, context, bot_state_manager, stored_intent)
+
+
+async def handle_error_state(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             bot_state_manager, intent_clarifier):
+    """Handle ERROR state - reset to waiting for question and try to process message."""
+    user_id = update.effective_user.id
+    message_text = update.message.text
+    
+    # Reset to waiting state first
+    bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
+    
+    # Try to process the message as a new question
+    await update.message.reply_text(
+        "🔄 Resetting... Processing your question now."
+    )
+    
+    # Process as new question
+    await handle_waiting_for_question(
+        update, context, bot_state_manager, intent_clarifier
+    )
+
+
+async def handle_await_run_decision_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                          bot_state_manager, intent_clarifier):
+    """Handle text message in AWAIT_RUN_DECISION state - treat as new question."""
+    user_id = update.effective_user.id
+    
+    # Inform user we're starting a new question
+    await update.message.reply_text(
+        "🔄 Starting a new question. Processing your request..."
+    )
+    
+    # Reset to waiting state and process as new question
+    bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
+    
+    # Process as new question
+    await handle_waiting_for_question(
+        update, context, bot_state_manager, intent_clarifier
+    )
+
+
+async def handle_editing_sql(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             bot_state_manager, sql_validator):
+    """Handle SQL editing - user sends modified SQL."""
+    user_id = update.effective_user.id
+    modified_sql = update.message.text.strip()
+    
+    # Remove markdown code blocks if present
+    if modified_sql.startswith("```sql"):
+        modified_sql = modified_sql[6:]
+    if modified_sql.startswith("```"):
+        modified_sql = modified_sql[3:]
+    if modified_sql.endswith("```"):
+        modified_sql = modified_sql[:-3]
+    modified_sql = modified_sql.strip()
+    
+    # Get original context - handle missing keys gracefully
+    state_data = bot_state_manager.get_state(user_id)
+    if not state_data:
+        await update.message.reply_text(
+            "❌ Error: No previous context found. Please start over with /start"
+        )
+        bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
+        return
+    
+    context = state_data.get("context", {})
+    intent = context.get("intent")
+    schema_slice = context.get("schema_slice", {})
+    
+    if not intent:
+        await update.message.reply_text(
+            "❌ Error: No intent found in context. Please start over with /start"
+        )
+        bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
+        return
+    
+    # Validate modified SQL
+    validation = sql_validator.validate(
+        modified_sql, 
+        schema_slice.get("partition") if schema_slice else None
+    )
+    
+    # Store modified SQL
+    bot_state_manager.set_state(user_id, BotState.AWAIT_RUN_DECISION.value, {
+        "intent": intent,
+        "sql": modified_sql,
+        "validation": validation,
+        "schema_slice": schema_slice
+    })
+    
+    # Show validation result and options
+    from .keyboards import get_run_decision_keyboard
+    
+    # Escape SQL for safe display
+    modified_sql_escaped = escape_sql_for_telegram(modified_sql)
+    
+    if validation["approved"]:
+        message = (
+            f"✅ <b>SQL Updated and Validated</b>\n\n"
+            f"Modified SQL:\n<pre><code class=\"language-sql\">{modified_sql_escaped}</code></pre>\n\n"
+            f"Ready to execute!"
+        )
+    else:
+        message = (
+            f"⚠️ <b>SQL Updated with Validation Warning</b>\n\n"
+            f"Warning: {html.escape(validation['reason'])}\n\n"
+            f"Modified SQL:\n<pre><code class=\"language-sql\">{modified_sql_escaped}</code></pre>\n\n"
+            f"Do you still want to run this query?"
+        )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=get_run_decision_keyboard(),
+        parse_mode="HTML"
+    )
 
 
 async def handle_intent_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -205,7 +380,29 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # Show SQL only
         state_data = bot_state_manager.get_state(user_id)
         sql = state_data.get("context", {}).get("sql", "No SQL available")
-        await query.edit_message_text(f"```sql\n{sql}\n```", parse_mode="Markdown")
+        # Escape SQL for safe display
+        sql_escaped = escape_sql_for_telegram(sql)
+        await query.edit_message_text(
+            f"<pre><code class=\"language-sql\">{sql_escaped}</code></pre>",
+            parse_mode="HTML"
+        )
+    elif callback_data == "modify_sql":
+        # Enter SQL editing mode
+        state_data = bot_state_manager.get_state(user_id)
+        context = state_data.get("context", {})
+        sql = context.get("sql", "")
+        
+        # Escape SQL for safe display
+        sql_escaped = escape_sql_for_telegram(sql)
+        
+        # Preserve existing context when entering EDITING_SQL state
+        bot_state_manager.set_state(user_id, BotState.EDITING_SQL.value, context)
+        await query.edit_message_text(
+            f"✏️ <b>Edit SQL Query</b>\n\n"
+            f"Current SQL:\n<pre><code class=\"language-sql\">{sql_escaped}</code></pre>\n\n"
+            f"Please send your modified SQL query. I'll validate it before execution.",
+            parse_mode="HTML"
+        )
     elif callback_data == "modify_intent":
         # Return to question input
         bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
@@ -231,6 +428,8 @@ async def handle_generate_sql(query, context, bot_state_manager, schema_selector
         # Select schema
         schema_slice = schema_selector.select_schema(intent)
         metric_def = schema_slice.pop("metric")
+        # Keep a copy of schema_slice for later use (validation, editing)
+        schema_slice_copy = schema_slice.copy()
         
         # Generate SQL
         bot_state_manager.set_state(user_id, BotState.GENERATING_SQL.value)
@@ -239,29 +438,44 @@ async def handle_generate_sql(query, context, bot_state_manager, schema_selector
         
         # Validate SQL
         bot_state_manager.set_state(user_id, BotState.VALIDATING_SQL.value)
-        validation = sql_validator.validate(sql, schema_slice.get("partition"))
+        validation = sql_validator.validate(sql, schema_slice_copy.get("partition"))
         
         if not validation["approved"]:
-            # Retry generation with feedback
-            # TODO: Implement retry logic
+            # Show SQL even if validation failed, but warn user
+            from .keyboards import get_run_decision_keyboard
+            # Escape SQL for safe display
+            sql_escaped = escape_sql_for_telegram(sql)
             await query.edit_message_text(
-                f"❌ SQL validation failed: {validation['reason']}\n\nPlease try rephrasing your question."
+                f"⚠️ SQL validation warning: {validation['reason']}\n\n"
+                f"Generated SQL:\n<pre><code class=\"language-sql\">{sql_escaped}</code></pre>\n\n"
+                f"Do you still want to run this query?",
+                reply_markup=get_run_decision_keyboard(),
+                parse_mode="HTML"
             )
-            bot_state_manager.set_state(user_id, BotState.ERROR.value)
+            # Store SQL anyway so user can see it
+            bot_state_manager.set_state(user_id, BotState.AWAIT_RUN_DECISION.value, {
+                "intent": intent,
+                "sql": sql,
+                "validation": validation,
+                "schema_slice": schema_slice_copy
+            })
             return
         
         # Store SQL and move to decision
         bot_state_manager.set_state(user_id, BotState.AWAIT_RUN_DECISION.value, {
             "intent": intent,
             "sql": sql,
-            "validation": validation
+            "validation": validation,
+            "schema_slice": schema_slice_copy
         })
         
         from .keyboards import get_run_decision_keyboard
+        # Escape SQL for safe display
+        sql_escaped = escape_sql_for_telegram(sql)
         await query.edit_message_text(
-            f"✅ SQL validated successfully!\n\n```sql\n{sql}\n```\n\nDo you want to run this query?",
+            f"✅ SQL validated successfully!\n\n<pre><code class=\"language-sql\">{sql_escaped}</code></pre>\n\nDo you want to run this query?",
             reply_markup=get_run_decision_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         
     except Exception as e:
@@ -294,6 +508,41 @@ async def handle_execute_sql(query, context, bot_state_manager, sql_executor,
                 f"❌ Query execution failed: {result['error']}"
             )
             bot_state_manager.set_state(user_id, BotState.ERROR.value)
+            return
+        
+        # Check for empty results
+        df = result["data"]
+        is_empty = (
+            df is None or 
+            df.empty or 
+            len(df) == 0 or
+            (len(df) == 1 and "result" in df.columns and isinstance(df.iloc[0]["result"], str) and "Could not parse" in str(df.iloc[0]["result"]))
+        )
+        
+        if is_empty:
+            # Provide helpful message for empty results
+            original_question = state_data["context"].get("original_question", "")
+            sql = state_data["context"]["sql"]
+            
+            # Escape SQL for safe display
+            sql_escaped = escape_sql_for_telegram(sql)
+            empty_message = (
+                f"📊 <b>No Results Found</b>\n\n"
+                f"Your query returned 0 rows.\n\n"
+                f"<b>Query:</b>\n<pre><code class=\"language-sql\">{sql_escaped}</code></pre>\n\n"
+                f"<b>Possible reasons:</b>\n"
+                f"• The date range might not match available data\n"
+                f"• The filters might be too restrictive\n"
+                f"• The data might not exist for the specified criteria\n\n"
+                f"<b>Suggestions:</b>\n"
+                f"• Try a different date range\n"
+                f"• Check if the filters are correct\n"
+                f"• Ask about available data ranges"
+            )
+            
+            bot_state_manager.set_state(user_id, BotState.DONE.value)
+            await query.edit_message_text(empty_message, parse_mode="HTML")
+            bot_state_manager.set_state(user_id, BotState.WAITING_FOR_QUESTION.value)
             return
         
         # Reduce results

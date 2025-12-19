@@ -10,9 +10,11 @@ DataPilot is a Telegram-based AI assistant that helps users query their data usi
 
 - 🤖 **Natural Language Interface**: Ask questions in plain English
 - 🔒 **SQL Safety**: Automatic validation and read-only enforcement
-- 🧠 **Open-Source LLM**: Uses Mistral, LLaMA, or CodeLLaMA models
+- 🧠 **Open-Source LLM**: Uses Ollama with Mistral, LLaMA, or CodeLLaMA models
 - 📊 **Smart Insights**: Automatically generates insights from query results
-- 🔄 **Human-in-the-Loop**: Review and approve SQL before execution
+- 🔄 **Human-in-the-Loop**: Review, modify, and approve SQL before execution
+- ✏️ **SQL Editing**: Directly edit generated SQL queries
+- 🛠️ **LangChain Integration**: Uses LangChain for LLM orchestration and SQL tools
 
 ## Architecture
 
@@ -20,13 +22,13 @@ See [DESIGN.md](DESIGN.md) for detailed architecture documentation.
 
 ### Key Components
 
-- **Agent 1: Intent Clarifier** - Extracts and clarifies user intent
-- **Agent 2: SQL Generator** - Generates SQL from structured intent
-- **Agent 4: Insight Generator** - Creates human-readable insights
-- **Schema Selector** - Discovers relevant tables and joins
-- **SQL Validator** - Ensures query safety
-- **SQL Executor** - Executes read-only queries
-- **Result Reducer** - Prepares compact summaries for LLM
+- **Agent 1: Intent Clarifier** - Extracts and clarifies user intent using LangChain + Ollama
+- **Agent 2: SQL Generator** - Generates SQL from structured intent using LangChain + Ollama
+- **Agent 4: Insight Generator** - Creates human-readable insights using LangChain + Ollama
+- **Schema Selector** - Discovers relevant tables and joins from metadata
+- **SQL Validator** - Ensures query safety using sqlglot
+- **SQL Executor** - Executes read-only queries using LangChain SQLDatabase tools
+- **Result Reducer** - Prepares compact summaries for LLM processing
 
 ## Setup
 
@@ -34,9 +36,9 @@ See [DESIGN.md](DESIGN.md) for detailed architecture documentation.
 
 - Python 3.9+
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- DuckDB database file (or create sample data)
-- **Ollama** installed and running (see [OLLAMA_SETUP.md](OLLAMA_SETUP.md))
+- **Ollama** installed and running (see [SETUP.md](SETUP.md#ollama-setup))
 - At least one Ollama model pulled (e.g., `ollama pull mistral`)
+- SQLite database (will be created automatically with sample data)
 
 ### Installation
 
@@ -57,23 +59,23 @@ pip install -r requirements.txt
 ```
 
 4. **Set up Ollama:**
-   - Install Ollama: See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed instructions
+   - Install Ollama: See [SETUP.md](SETUP.md#ollama-setup) for detailed instructions
    - Start Ollama service: `ollama serve`
    - Pull a model: `ollama pull mistral` (or your preferred model)
    - Verify it works: `ollama run mistral "Hello"`
 
 5. **Configure the bot:**
-   - Update `src/config/config.yaml`:
+   - Create `.env` file in project root:
+     ```bash
+     echo "TELEGRAM_BOT_TOKEN=your_token_here" > .env
+     ```
+   - Or set environment variable:
+     ```bash
+     export TELEGRAM_BOT_TOKEN="your_bot_token_here"
+     ```
+   - Update `src/config/config.yaml` (optional):
      - Set `model_name` to your Ollama model (e.g., "mistral")
-     - Adjust `base_url` if Ollama is not on localhost:11434
-   - Set `TELEGRAM_BOT_TOKEN` environment variable:
-   ```bash
-   export TELEGRAM_BOT_TOKEN="your_bot_token_here"
-   ```
-
-5. **Prepare metadata:**
-   - Update `metadata/schema.json` with your database schema
-   - Update `metadata/metrics.yaml` with your business metrics
+     - Adjust `base_url` only if Ollama is not on localhost:11434
 
 6. **Initialize database:**
    ```bash
@@ -84,7 +86,7 @@ pip install -r requirements.txt
    python scripts/init_database.py --reset
    ```
    
-   This will create `data/sample.duckdb` with sample data matching your schema.
+   This will create `data/sample.db` (SQLite) with sample data matching your schema.
    - See example below for creating sample data
 
 ## Usage
@@ -128,7 +130,7 @@ Bot: 🔧 Generating SQL query...
      WHERE status = 'completed'
      GROUP BY country
      
-     [▶️ Run query] [🧾 Show SQL only] [✏️ Modify] [❌ Cancel]
+     [▶️ Run query] [🧾 Show SQL only] [✏️ Modify SQL] [🔄 Modify intent] [❌ Cancel]
 
 User: [Clicks Run query]
 
@@ -144,7 +146,7 @@ Bot: ⚙️ Executing query...
 ```
 DataPilot/
 ├── src/
-│   ├── agents/          # LLM agents
+│   ├── agents/          # LLM agents (LangChain + Ollama)
 │   │   ├── base_agent.py
 │   │   ├── intent_clarifier.py
 │   │   ├── sql_generator.py
@@ -152,7 +154,7 @@ DataPilot/
 │   ├── tools/           # Non-LLM tools
 │   │   ├── schema_selector.py
 │   │   ├── sql_validator.py
-│   │   ├── sql_executor.py
+│   │   ├── sql_executor.py  # Uses LangChain SQLDatabase
 │   │   └── result_reducer.py
 │   ├── bot/             # Telegram bot
 │   │   ├── telegram_bot.py
@@ -161,34 +163,40 @@ DataPilot/
 │   │   └── keyboards.py
 │   ├── config/          # Configuration
 │   │   └── config.yaml
+│   ├── prompts.py       # Prompt loader (loads from prompts.yaml)
 │   └── utils/           # Utilities
 │       ├── logger.py
-│       ├── db.py
+│       ├── db.py        # DatabaseManager (SQLite via LangChain)
 │       └── state_store.py
 ├── metadata/            # Schema and metrics
 │   ├── schema.json
 │   └── metrics.yaml
-├── tests/               # Tests
-│   ├── unit/
-│   └── integration/
-├── data/                # Database files
+├── data/                # Database files (SQLite)
+│   └── sample.db        # Created by init_database.py
 ├── logs/                # Log files
 ├── scripts/             # Utility scripts
-│   └── init_database.py # Database initialization
+│   └── init_database.py # Database initialization (SQLite)
 ├── main.py              # Entry point
 ├── requirements.txt
-└── DESIGN.md            # Design documentation
+├── setup.sh             # Automated setup script
+├── SETUP.md             # Setup guide (includes Ollama setup)
+├── DESIGN.md            # Design documentation
+└── prompts.yaml         # All prompts in YAML format
 ```
 
 ## Configuration
 
 Key configuration options in `src/config/config.yaml`:
 
-- **LLM**: Model path, type, temperature, tokens
-- **Database**: DuckDB path, timeout, max rows
+- **LLM**: Ollama model name, temperature, max tokens, timeout, base_url (optional)
+- **Database**: SQLite URI (`sqlite:///data/sample.db`), read-only mode, timeout
 - **SQL Validator**: Safety rules and limits
-- **Intent Clarifier**: Max clarification rounds
+- **Intent Clarifier**: Max clarification rounds, confidence threshold
 - **Logging**: Level, format, file path
+
+### Prompts
+
+All prompts are stored in `src/prompts.yaml` for easy editing. The `src/prompts.py` module loads them automatically.
 
 ## Development
 
@@ -216,16 +224,20 @@ This is a **POC (Proof of Concept)** implementation. Current status:
 
 ✅ **Completed:**
 - Project structure
-- Configuration management
-- **Ollama + LangChain integration**
-- **Intent clarification with structured output**
-- **SQL generation with LangChain**
-- **Insight generation with LangChain**
-- Telegram bot framework
-- State management
-- SQL validator (basic rules)
-- Database connection manager
+- Configuration management (YAML-based)
+- **Ollama + LangChain integration** (ChatOllama, SQLDatabase)
+- **Intent clarification with structured output** (Pydantic)
+- **SQL generation with LangChain** (prompt-based)
+- **Insight generation with LangChain** (prompt-based)
+- Telegram bot framework (state machine, handlers, keyboards)
+- State management (SQLite-based)
+- SQL validator (sqlglot-based, safety rules)
+- Database connection manager (SQLite via LangChain SQLDatabase)
 - Schema selector with join discovery
+- **SQL editing feature** (users can modify generated SQL)
+- **Empty result handling** (helpful error messages)
+- **Prompt management** (YAML-based, easy to edit)
+- **HTML message formatting** (reliable code display)
 
 🚧 **In Progress:**
 - Multi-hop join discovery (basic implementation done, needs enhancement)
@@ -281,7 +293,9 @@ The script will:
 ## Acknowledgments
 
 - Built with [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
-- Uses [DuckDB](https://duckdb.org/) for analytics
+- Uses [SQLite](https://www.sqlite.org/) for analytics (via LangChain SQLDatabase)
 - SQL parsing with [sqlglot](https://github.com/tobymao/sqlglot)
 - LLM integration with [Ollama](https://ollama.ai/) and [LangChain](https://www.langchain.com/)
+- SQL agent tools from [LangChain SQL Toolkit](https://python.langchain.com/docs/integrations/toolkits/sql_database)
+- Prompt management inspired by best practices for LLM applications
 
