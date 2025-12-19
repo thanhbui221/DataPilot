@@ -1,0 +1,36 @@
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+
+llm:
+  model_path: "./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+  model_type: "mistral"  # or "llama", "codellama"
+  temperature: 0.7
+  max_tokens: 2048
+  use_unified_model: true  # Use single model for all agents
+  timeout: 60  # seconds
+
+database:
+  duckdb_path: "./data/sample.duckdb"
+  read_only: true
+  query_timeout: 30  # seconds
+  max_rows: 5000
+
+sql_validator:
+  max_retries: 2
+  require_limit: true
+  max_estimated_rows: 10000
+  require_partition_filter: true
+
+intent_clarifier:
+  max_clarification_rounds: 2
+  confidence_threshold: 0.7
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "json"
+  file: "logs/datapilot.log"
+
+state_store:
+  type: "sqlite"  # or "redis"
+  path: "./data/state.db"
+

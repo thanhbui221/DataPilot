@@ -1,0 +1,123 @@
+{
+  "tables": {
+    "orders": {
+      "description": "Customer order records",
+      "columns": {
+        "order_id": {
+          "type": "INTEGER",
+          "primary_key": true,
+          "description": "Unique order identifier"
+        },
+        "user_id": {
+          "type": "INTEGER",
+          "foreign_key": "users.user_id",
+          "description": "Reference to user who placed the order"
+        },
+        "product_id": {
+          "type": "INTEGER",
+          "foreign_key": "products.product_id",
+          "description": "Reference to product ordered"
+        },
+        "amount": {
+          "type": "DECIMAL(10,2)",
+          "description": "Order amount in currency"
+        },
+        "status": {
+          "type": "VARCHAR(20)",
+          "description": "Order status: pending, completed, cancelled"
+        },
+        "created_at": {
+          "type": "TIMESTAMP",
+          "partition_key": true,
+          "description": "Order creation timestamp"
+        }
+      }
+    },
+    "users": {
+      "description": "User accounts",
+      "columns": {
+        "user_id": {
+          "type": "INTEGER",
+          "primary_key": true,
+          "description": "Unique user identifier"
+        },
+        "country": {
+          "type": "VARCHAR(2)",
+          "description": "User country code (ISO 3166-1 alpha-2)"
+        },
+        "email": {
+          "type": "VARCHAR(255)",
+          "description": "User email address"
+        },
+        "created_at": {
+          "type": "TIMESTAMP",
+          "description": "User registration timestamp"
+        }
+      }
+    },
+    "products": {
+      "description": "Product catalog",
+      "columns": {
+        "product_id": {
+          "type": "INTEGER",
+          "primary_key": true,
+          "description": "Unique product identifier"
+        },
+        "name": {
+          "type": "VARCHAR(255)",
+          "description": "Product name"
+        },
+        "category_id": {
+          "type": "INTEGER",
+          "foreign_key": "categories.category_id",
+          "description": "Reference to product category"
+        },
+        "price": {
+          "type": "DECIMAL(10,2)",
+          "description": "Product price"
+        }
+      }
+    },
+    "categories": {
+      "description": "Product categories",
+      "columns": {
+        "category_id": {
+          "type": "INTEGER",
+          "primary_key": true,
+          "description": "Unique category identifier"
+        },
+        "name": {
+          "type": "VARCHAR(100)",
+          "description": "Category name"
+        }
+      }
+    }
+  },
+  "relationships": [
+    {
+      "from_table": "orders",
+      "from_column": "user_id",
+      "to_table": "users",
+      "to_column": "user_id",
+      "type": "many_to_one",
+      "description": "Orders belong to users"
+    },
+    {
+      "from_table": "orders",
+      "from_column": "product_id",
+      "to_table": "products",
+      "to_column": "product_id",
+      "type": "many_to_one",
+      "description": "Orders contain products"
+    },
+    {
+      "from_table": "products",
+      "from_column": "category_id",
+      "to_table": "categories",
+      "to_column": "category_id",
+      "type": "many_to_one",
+      "description": "Products belong to categories"
+    }
+  ]
+}
+

@@ -1,0 +1,17 @@
+"""Bot state machine definitions."""
+from enum import Enum
+
+
+class BotState(str, Enum):
+    """Telegram bot states."""
+    WAITING_FOR_QUESTION = "WAITING_FOR_QUESTION"
+    CLARIFYING_INTENT = "CLARIFYING_INTENT"
+    CONFIRM_INTENT = "CONFIRM_INTENT"
+    GENERATING_SQL = "GENERATING_SQL"
+    VALIDATING_SQL = "VALIDATING_SQL"
+    AWAIT_RUN_DECISION = "AWAIT_RUN_DECISION"
+    EXECUTING = "EXECUTING"
+    GENERATING_INSIGHT = "GENERATING_INSIGHT"
+    DONE = "DONE"
+    ERROR = "ERROR"
+

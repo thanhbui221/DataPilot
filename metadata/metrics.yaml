@@ -1,0 +1,34 @@
+total_revenue:
+  description: Completed order revenue
+  table: orders
+  sql: SUM(amount)
+  filters:
+    status: completed
+
+gross_revenue:
+  description: All revenue including cancelled orders
+  table: orders
+  sql: SUM(amount)
+  filters: {}
+
+order_count:
+  description: Number of completed orders
+  table: orders
+  sql: COUNT(*)
+  filters:
+    status: completed
+
+average_order_value:
+  description: Average value of completed orders
+  table: orders
+  sql: AVG(amount)
+  filters:
+    status: completed
+
+active_customers:
+  description: Number of unique users who made purchases
+  table: users
+  sql: COUNT(DISTINCT user_id)
+  filters:
+    has_purchased: true
+
