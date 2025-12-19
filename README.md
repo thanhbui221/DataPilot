@@ -35,7 +35,8 @@ See [DESIGN.md](DESIGN.md) for detailed architecture documentation.
 - Python 3.9+
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
 - DuckDB database file (or create sample data)
-- LLM model file (Mistral-7B, LLaMA-3-8B, or CodeLLaMA-7B)
+- **Ollama** installed and running (see [OLLAMA_SETUP.md](OLLAMA_SETUP.md))
+- At least one Ollama model pulled (e.g., `ollama pull mistral`)
 
 ### Installation
 
@@ -55,8 +56,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Configure the bot:**
-   - Copy `src/config/config.yaml` and update with your settings
+4. **Set up Ollama:**
+   - Install Ollama: See [OLLAMA_SETUP.md](OLLAMA_SETUP.md) for detailed instructions
+   - Start Ollama service: `ollama serve`
+   - Pull a model: `ollama pull mistral` (or your preferred model)
+   - Verify it works: `ollama run mistral "Hello"`
+
+5. **Configure the bot:**
+   - Update `src/config/config.yaml`:
+     - Set `model_name` to your Ollama model (e.g., "mistral")
+     - Adjust `base_url` if Ollama is not on localhost:11434
    - Set `TELEGRAM_BOT_TOKEN` environment variable:
    ```bash
    export TELEGRAM_BOT_TOKEN="your_bot_token_here"
@@ -66,14 +75,17 @@ pip install -r requirements.txt
    - Update `metadata/schema.json` with your database schema
    - Update `metadata/metrics.yaml` with your business metrics
 
-6. **Prepare database:**
-   - Create a DuckDB database file at `data/sample.duckdb`
-   - Or update the path in `config.yaml`
-
-7. **Download LLM model (optional):**
-   - Download a quantized model (4-bit or 8-bit)
-   - Place in `models/` directory
-   - Update `model_path` in `config.yaml`
+6. **Initialize database:**
+   ```bash
+   # Create database with sample data
+   python scripts/init_database.py
+   
+   # Or reset existing database
+   python scripts/init_database.py --reset
+   ```
+   
+   This will create `data/sample.duckdb` with sample data matching your schema.
+   - See example below for creating sample data
 
 ## Usage
 
@@ -161,6 +173,8 @@ DataPilot/
 │   └── integration/
 ├── data/                # Database files
 ├── logs/                # Log files
+├── scripts/             # Utility scripts
+│   └── init_database.py # Database initialization
 ├── main.py              # Entry point
 ├── requirements.txt
 └── DESIGN.md            # Design documentation
@@ -203,24 +217,26 @@ This is a **POC (Proof of Concept)** implementation. Current status:
 ✅ **Completed:**
 - Project structure
 - Configuration management
-- Base agent and tool skeletons
+- **Ollama + LangChain integration**
+- **Intent clarification with structured output**
+- **SQL generation with LangChain**
+- **Insight generation with LangChain**
 - Telegram bot framework
 - State management
 - SQL validator (basic rules)
 - Database connection manager
+- Schema selector with join discovery
 
 🚧 **In Progress:**
-- LLM integration (model loading and inference)
-- Intent clarification logic
-- SQL generation logic
-- Insight generation logic
-- Multi-hop join discovery
+- Multi-hop join discovery (basic implementation done, needs enhancement)
+- Error handling and retry logic
+- Conversation context management
 
 📋 **Planned:**
 - Comprehensive testing
 - Advanced result reduction
-- Conversation context management
 - Query history and analytics
+- Fine-tuning prompts for better results
 
 ## Limitations (POC)
 
@@ -237,9 +253,35 @@ This is currently a personal project. Contributions and suggestions welcome!
 
 [Add your license here]
 
+## Database Initialization
+
+The `scripts/init_database.py` script automatically creates the database with sample data:
+
+- **50 users** from 10 different countries
+- **12 products** across 5 categories
+- **150+ orders** distributed across the last 6 months
+- Realistic data distribution (85% completed, 10% pending, 5% cancelled orders)
+
+Run it with:
+```bash
+python scripts/init_database.py
+```
+
+Use `--reset` to recreate the database:
+```bash
+python scripts/init_database.py --reset
+```
+
+The script will:
+1. Create all tables matching `metadata/schema.json`
+2. Insert sample data
+3. Verify the data and test metrics
+4. Show summary statistics
+
 ## Acknowledgments
 
 - Built with [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
 - Uses [DuckDB](https://duckdb.org/) for analytics
 - SQL parsing with [sqlglot](https://github.com/tobymao/sqlglot)
+- LLM integration with [Ollama](https://ollama.ai/) and [LangChain](https://www.langchain.com/)
 

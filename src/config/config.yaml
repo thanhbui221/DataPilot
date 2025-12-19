@@ -2,8 +2,9 @@ telegram:
   bot_token: "${TELEGRAM_BOT_TOKEN}"
 
 llm:
-  model_path: "./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-  model_type: "mistral"  # or "llama", "codellama"
+  provider: "ollama"  # ollama, openai, etc.
+  base_url: "http://localhost:11434"  # Ollama API endpoint
+  model_name: "mistral"  # or "llama3", "codellama", "qwen2.5", etc. (must be pulled in Ollama)
   temperature: 0.7
   max_tokens: 2048
   use_unified_model: true  # Use single model for all agents

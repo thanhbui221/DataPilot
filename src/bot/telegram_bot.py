@@ -53,8 +53,8 @@ class DataPilotBot:
         # Initialize agents
         llm_config = self.config["llm"]
         self.intent_clarifier = IntentClarifier(
-            model_path=llm_config["model_path"],
-            model_type=llm_config["model_type"],
+            model_name=llm_config["model_name"],
+            base_url=llm_config.get("base_url", "http://localhost:11434"),
             temperature=llm_config["temperature"],
             max_tokens=llm_config["max_tokens"],
             timeout=llm_config["timeout"],
@@ -63,16 +63,16 @@ class DataPilotBot:
         )
         
         self.sql_generator = SQLGenerator(
-            model_path=llm_config["model_path"],
-            model_type=llm_config["model_type"],
+            model_name=llm_config["model_name"],
+            base_url=llm_config.get("base_url", "http://localhost:11434"),
             temperature=llm_config["temperature"],
             max_tokens=llm_config["max_tokens"],
             timeout=llm_config["timeout"]
         )
         
         self.insight_generator = InsightGenerator(
-            model_path=llm_config["model_path"],
-            model_type=llm_config["model_type"],
+            model_name=llm_config["model_name"],
+            base_url=llm_config.get("base_url", "http://localhost:11434"),
             temperature=llm_config["temperature"],
             max_tokens=llm_config["max_tokens"],
             timeout=llm_config["timeout"]
