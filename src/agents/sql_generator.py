@@ -1,7 +1,6 @@
 """Agent 2: SQL Generator - Generates SQL from intent and schema using LangChain."""
 import json
 from typing import Dict, Any, Optional
-from langchain.prompts import ChatPromptTemplate
 from .base_agent import BaseAgent
 from ..prompts import SQL_GENERATOR_SYSTEM_PROMPT, SQL_GENERATOR_USER_PROMPT_TEMPLATE
 import logging

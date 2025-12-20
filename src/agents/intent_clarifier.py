@@ -1,7 +1,6 @@
 """Agent 1: Intent Clarifier - Extracts and clarifies user intent using LangChain."""
 import json
 from typing import Dict, Any, Optional
-from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from .base_agent import BaseAgent

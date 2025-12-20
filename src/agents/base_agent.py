@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 import logging
 from langchain_ollama import ChatOllama
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import BaseMessage
 
 logger = logging.getLogger("datapilot")

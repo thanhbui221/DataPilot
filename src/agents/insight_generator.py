@@ -1,7 +1,6 @@
 """Agent 4: Insight Generator - Generates human-readable insights using LangChain."""
 import json
 from typing import Dict, Any
-from langchain.prompts import ChatPromptTemplate
 from .base_agent import BaseAgent
 from ..prompts import INSIGHT_GENERATOR_SYSTEM_PROMPT, INSIGHT_GENERATOR_USER_PROMPT_TEMPLATE
 import logging
